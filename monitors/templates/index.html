@@ -1,0 +1,115 @@
+{% verbatim %}<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>DevPulse</title>
+<style>
+:root{--bg:#fff;--fg:#0a0a0a;--mut:#6b6b6b;--line:#e6e6e6;--soft:#f6f6f6;--ok:#16a34a;--bad:#dc2626}
+*{box-sizing:border-box}body{margin:0;font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--fg)}
+a{color:inherit}.wrap{max-width:960px;margin:0 auto;padding:0 20px}
+header{border-bottom:1px solid var(--line)}header .wrap{display:flex;align-items:center;justify-content:space-between;height:60px}
+.logo{font-weight:700;font-size:18px;text-decoration:none;letter-spacing:-.02em}main{padding:32px 0 64px}
+h1{font-size:26px;margin:0 0 4px;letter-spacing:-.02em}.sub{color:var(--mut);margin:0 0 24px;word-break:break-all}
+.btn{background:var(--fg);color:#fff;border:1px solid var(--fg);border-radius:8px;padding:9px 16px;font:inherit;font-weight:500;cursor:pointer;text-decoration:none;display:inline-block}
+.btn:hover{opacity:.85}.btn.ghost{background:#fff;color:var(--fg);border-color:var(--line)}.btn.ghost:hover{border-color:var(--fg);opacity:1}
+.btn.danger{background:#fff;color:var(--bad);border-color:var(--bad)}.btn:disabled{opacity:.5;cursor:wait}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:16px}
+.card{border:1px solid var(--line);border-radius:12px;padding:18px;background:#fff;text-decoration:none;display:block}a.card:hover{border-color:var(--fg)}
+.row{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:7px;background:#aaa}.up{background:var(--ok)}.down{background:var(--bad)}
+.badge{font-size:12px;font-weight:600;padding:3px 9px;border-radius:99px;background:var(--soft);border:1px solid var(--line);margin-right:6px}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin:24px 0;overflow-x:auto}
+.tabs a{padding:10px 14px;text-decoration:none;color:var(--mut);border-bottom:2px solid transparent;margin-bottom:-1px;font-weight:500}.tabs a.on{color:var(--fg);border-color:var(--fg)}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:16px;margin-top:16px}
+.stat b{display:block;font-size:28px;letter-spacing:-.02em}.stat span{color:var(--mut);font-size:13px}
+.wide{overflow-x:auto}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:11px 10px;border-bottom:1px solid var(--line);font-size:14px}th{color:var(--mut);font-weight:500;font-size:13px}
+label{display:block;font-size:13px;font-weight:600;margin:14px 0 6px}
+input,select{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:8px;font:inherit;background:#fff;color:var(--fg)}
+input:focus,select:focus{outline:2px solid var(--fg);outline-offset:-1px}input[type=checkbox]{width:auto;margin-right:8px}
+.form{max-width:440px}.form .btn{margin-top:20px}
+.empty{text-align:center;padding:56px 20px;color:var(--mut);border:1px dashed var(--line);border-radius:12px}
+#toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--fg);color:#fff;padding:11px 18px;border-radius:10px;opacity:0;transition:.2s;pointer-events:none;max-width:90%}#toast.show{opacity:1}
+.auth{max-width:380px;margin:80px auto}.seg{display:flex;gap:8px;margin:20px 0 4px}.seg .btn{flex:1}
+</style></head><body><div id="app"></div><div id="toast"></div>
+<script>
+const $=s=>document.querySelector(s),app=$('#app');
+let token=localStorage.getItem('dp_token'),rid=0,tt;
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt=s=>s?new Date(s).toLocaleString():'—';
+const cap=s=>s.charAt(0).toUpperCase()+s.slice(1);
+const badge=m=>`<span class="badge"><i class="dot ${m.current_status}"></i>${cap(m.current_status)}</span>`;
+function toast(m){const e=$('#toast');e.textContent=m;e.classList.add('show');clearTimeout(tt);tt=setTimeout(()=>e.classList.remove('show'),3500)}
+function errText(d){if(!d)return'';if(typeof d==='string')return d;if(d.detail)return d.detail;
+ return Object.entries(d).map(([k,v])=>k+': '+(Array.isArray(v)?v.join(' '):v)).join(' · ')}
+async function api(path,{method='GET',body}={}){
+ const r=await fetch('/api'+path,{method,headers:{'Content-Type':'application/json',...(token?{Authorization:'Token '+token}:{})},body:body?JSON.stringify(body):undefined});
+ if(r.status===401&&token&&!path.startsWith('/auth')){logout();throw new Error('Session expired, please sign in')}
+ let data=null;try{data=await r.json()}catch(e){}
+ if(!r.ok)throw new Error(errText(data)||'Error '+r.status);return data}
+function logout(){token=null;localStorage.removeItem('dp_token');location.hash='#/';route()}
+const shell=h=>{app.innerHTML=`<header><div class="wrap"><a class="logo" href="#/">DevPulse</a><div><a class="btn ghost" href="#/new">+ Add monitor</a> <button class="btn ghost" id="out">Sign out</button></div></div></header><main><div class="wrap">${h}</div></main>`;$('#out').onclick=logout};
+const IV=[[60,'1 minute'],[300,'5 minutes'],[900,'15 minutes'],[3600,'1 hour']];
+const intervalSel=v=>`<select name="interval_seconds">${(IV.some(x=>x[0]===v)?IV:[...IV,[v,Math.round(v/60)+' min']]).map(([s,l])=>`<option value="${s}" ${s===v?'selected':''}>${l}</option>`).join('')}</select>`;
+
+function authView(mode='in'){
+ app.innerHTML=`<div class="auth card"><div class="logo" style="font-size:22px">DevPulse</div><p class="sub" style="margin:6px 0 0">Know when your website goes down.</p><div class="seg"><button class="btn ${mode==='in'?'':'ghost'}" data-m="in">Sign in</button><button class="btn ${mode==='up'?'':'ghost'}" data-m="up">Register</button></div><form id="f"><label>Username</label><input name="u" required autocomplete="username">${mode==='up'?'<label>Email (optional)</label><input name="e" type="email">':''}<label>Password</label><input name="p" type="password" required autocomplete="${mode==='in'?'current-password':'new-password'}"><button class="btn" style="width:100%">${mode==='in'?'Sign in':'Create account'}</button></form></div>`;
+ app.querySelectorAll('[data-m]').forEach(b=>b.onclick=()=>authView(b.dataset.m));
+ $('#f').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);
+  try{if(mode==='up'){const body={username:f.get('u'),password:f.get('p')};if(f.get('e'))body.email=f.get('e');await api('/auth/register/',{method:'POST',body})}
+   const d=await api('/auth/token/',{method:'POST',body:{username:f.get('u'),password:f.get('p')}});
+   token=d.token;localStorage.setItem('dp_token',token);location.hash='#/';route()}catch(err){toast(err.message)}}}
+
+async function dashView(my){
+ shell('<h1>Your monitors</h1><p class="sub">Open a monitor for statistics, history and incidents.</p><div id="c">Loading…</div>');
+ try{const d=await api('/monitors/');if(my!==rid)return;
+  $('#c').innerHTML=d.results.length?`<div class="grid">${d.results.map(m=>`<a class="card" href="#/m/${m.id}"><div class="row"><b>${esc(m.name)}</b>${badge(m)}</div><div class="sub" style="margin:6px 0 10px;font-size:13px">${esc(m.url)}</div><div style="font-size:13px;color:var(--mut)">Last check: ${fmt(m.last_checked_at)}</div></a>`).join('')}</div>`:'<div class="empty"><p>No monitors yet.</p><a class="btn" href="#/new">Add your first monitor</a></div>'}catch(e){toast(e.message)}}
+
+function newView(){
+ shell(`<h1>Add monitor</h1><p class="sub">We check your site on a schedule and tell you if it goes down.</p><form class="form" id="nf"><label>Name</label><input name="name" placeholder="My website" required><label>URL</label><input name="url" type="url" placeholder="https://example.com" required><label>Check every</label>${intervalSel(300)}<label>Telegram chat ID (optional)</label><input name="telegram_chat_id" placeholder="123456789"><button class="btn">Create monitor</button></form>`);
+ $('#nf').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);
+  try{const d=await api('/monitors/',{method:'POST',body:{name:f.get('name'),url:f.get('url'),interval_seconds:+f.get('interval_seconds'),telegram_chat_id:f.get('telegram_chat_id')}});
+   toast('Monitor created');location.hash='#/m/'+d.id}catch(err){toast(err.message)}}}
+
+const checkRow=c=>`<tr><td>${fmt(c.checked_at)}</td><td><i class="dot ${c.is_success?'up':'down'}"></i>${c.is_success?'Up':'Down'}</td><td>${c.status_code??'—'}</td><td>${c.response_time_ms??'—'}</td><td>${esc(c.error_message)||'—'}</td></tr>`;
+const incRow=i=>`<tr><td>${fmt(i.started_at)}</td><td>${i.is_open?'<span class="badge">Ongoing</span>':fmt(i.resolved_at)}</td><td>${esc(i.cause)||'—'}</td></tr>`;
+
+function listTab(t,path,row,cols,my,filter){
+ t.innerHTML=`${filter?'<select id="fl" style="width:auto;margin-bottom:14px"><option value="">All checks</option><option value="false">Failed only</option><option value="true">Successful only</option></select>':''}<div class="wide"><table><thead><tr>${cols.map(c=>`<th>${c}</th>`).join('')}</tr></thead><tbody></tbody></table></div><div id="more" style="margin-top:16px"></div>`;
+ const load=async p=>{try{const d=await api(p);if(my!==rid)return;const b=t.querySelector('tbody');
+  b.insertAdjacentHTML('beforeend',d.results.map(row).join('')||(b.children.length?'':`<tr><td colspan="${cols.length}" style="color:var(--mut)">Nothing here yet.</td></tr>`));
+  $('#more').innerHTML=d.next?'<button class="btn ghost" id="mb">Load more</button>':'';
+  if(d.next)$('#mb').onclick=()=>{const u=new URL(d.next);load(u.pathname.replace(/^\/api/,'')+u.search)}}catch(e){toast(e.message)}};
+ const first=v=>{t.querySelector('tbody').innerHTML='';load(path+(v?'?is_success='+v:''))};
+ first('');if(filter)$('#fl').onchange=e=>first(e.target.value)}
+
+async function overview(t,m,id,my,days=7){
+ t.innerHTML='Loading…';
+ try{const s=await api(`/monitors/${id}/stats/?days=${days}`);if(my!==rid)return;
+  t.innerHTML=`<div class="row"><b>Statistics</b><select id="d" style="width:auto">${[1,7,30].map(x=>`<option value="${x}" ${x===days?'selected':''}>Last ${x} ${x===1?'day':'days'}</option>`).join('')}</select></div><div class="stats"><div class="card stat"><b>${s.uptime_percent==null?'—':s.uptime_percent+'%'}</b><span>Uptime</span></div><div class="card stat"><b>${s.avg_response_ms==null?'—':Math.round(s.avg_response_ms)+' ms'}</b><span>Average response</span></div><div class="card stat"><b>${s.total_checks}</b><span>Checks</span></div><div class="card stat"><b>${s.incidents_count}</b><span>Incidents</span></div></div><p class="sub" style="margin-top:20px">Last check: ${fmt(m.last_checked_at)} · Failures in a row: ${m.consecutive_failures} · Checked every ${Math.round(m.interval_seconds/60)} min</p>`;
+  $('#d').onchange=e=>overview(t,m,id,my,+e.target.value)}catch(e){toast(e.message)}}
+
+function settings(t,m,id){
+ t.innerHTML=`<form class="form" id="sf"><label>Name</label><input name="name" value="${esc(m.name)}" required><label>URL</label><input name="url" value="${esc(m.url)}" required><label>Check every</label>${intervalSel(m.interval_seconds)}<label>Telegram chat ID (optional)</label><input name="telegram_chat_id" value="${esc(m.telegram_chat_id)}"><label><input type="checkbox" name="is_active" ${m.is_active?'checked':''}>Monitoring enabled</label><button class="btn">Save changes</button></form><hr style="border:0;border-top:1px solid var(--line);margin:32px 0"><button class="btn danger" id="del">Delete monitor</button>`;
+ $('#sf').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);
+  try{await api('/monitors/'+id+'/',{method:'PATCH',body:{name:f.get('name'),url:f.get('url'),interval_seconds:+f.get('interval_seconds'),telegram_chat_id:f.get('telegram_chat_id'),is_active:f.has('is_active')}});toast('Saved');route()}catch(err){toast(err.message)}};
+ $('#del').onclick=async()=>{if(!confirm('Delete this monitor and all its history?'))return;
+  try{await api('/monitors/'+id+'/',{method:'DELETE'});toast('Monitor deleted');location.hash='#/'}catch(err){toast(err.message)}}}
+
+async function detailView(id,tab,my){
+ let m;try{m=await api('/monitors/'+id+'/')}catch(e){toast(e.message);location.hash='#/';return}
+ if(my!==rid)return;
+ const tabs=[['overview','Overview'],['checks','Checks'],['incidents','Incidents'],['settings','Settings']];
+ shell(`<a href="#/" style="color:var(--mut);text-decoration:none">← All monitors</a><div class="row" style="margin-top:12px"><div><h1>${esc(m.name)}</h1><p class="sub" style="margin:0">${esc(m.url)}</p></div><div>${badge(m)}<button class="btn" id="cn">Check now</button></div></div><div class="tabs">${tabs.map(([k,l])=>`<a href="#/m/${id}/${k}" class="${k===tab?'on':''}">${l}</a>`).join('')}</div><div id="t"></div>`);
+ $('#cn').onclick=async e=>{const b=e.target;b.disabled=true;b.textContent='Checking…';
+  try{const r=await api(`/monitors/${id}/check-now/`,{method:'POST'});toast(r.is_success?`Up · HTTP ${r.status_code} · ${r.response_time_ms} ms`:`Failed · ${r.error_message}`);route()}catch(err){toast(err.message);b.disabled=false;b.textContent='Check now'}};
+ const t=$('#t');
+ if(tab==='checks')listTab(t,`/monitors/${id}/checks/`,checkRow,['Time','Result','HTTP','Time (ms)','Error'],my,true);
+ else if(tab==='incidents')listTab(t,`/monitors/${id}/incidents/`,incRow,['Started','Resolved','Cause'],my,false);
+ else if(tab==='settings')settings(t,m,id);
+ else overview(t,m,id,my)}
+
+function route(){
+ const my=++rid;if(!token)return authView();
+ const h=location.hash.slice(1)||'/',m=h.match(/^\/m\/(\d+)(?:\/(\w+))?$/);
+ if(h==='/new')return newView();
+ if(m)return detailView(+m[1],m[2]||'overview',my);
+ dashView(my)}
+addEventListener('hashchange',route);route();
+</script></body></html>{% endverbatim %}

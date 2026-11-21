@@ -13,6 +13,7 @@ from .models import CheckResult, Incident, Monitor
 from .security import UnsafeURLError, safe_get, validate_public_url, validate_url_syntax
 from .services import check_monitor
 from .tasks import check_monitor_task, run_due_checks
+from rest_framework.test import APIClient, APITestCase
 
 User = get_user_model()
 
@@ -215,6 +216,17 @@ class MonitorApiTests(APITestCase):
 class AuthTests(APITestCase):
     def setUp(self):
         cache.clear()
+
+        def test_login_works_even_with_session_cookie(self):
+            User.objects.create_user(username="erin", password="StrongPass123x")
+            client = APIClient(enforce_csrf_checks=True)
+            client.login(username="erin", password="StrongPass123x")
+            response = client.post(
+                "/api/auth/token/",
+                {"username": "erin", "password": "StrongPass123x"},
+                format="json",
+            )
+            self.assertEqual(response.status_code, 200)
 
     def test_register_hashes_password_and_hides_it(self):
         response = self.client.post(

@@ -25,12 +25,14 @@ from .services import check_monitor
 class RegisterView(generics.CreateAPIView):
     serializer_class = RegisterSerializer
     permission_classes = [permissions.AllowAny]
+    authentication_classes = []
 
 
 class LoginView(ObtainAuthToken):
     # The stock view has no throttling at all, which allows password brute force.
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "login"
+    authentication_classes = []
 
 
 class MonitorViewSet(viewsets.ModelViewSet):
